@@ -1,0 +1,41 @@
+# Dart/Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+
+# Android
+android/.gradle/
+android/app/build/
+android/local.properties
+*.keystore
+*.jks
+
+# Firebase (never commit these!)
+google-services.json
+GoogleService-Info.plist
+lib/firebase_options.dart
+
+# Environment / Secrets
+.env
+*.env
+secrets/
+
+# TFLite models (download separately — see docs/MODEL_SOURCES.md)
+assets/models/*.tflite
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Test coverage
+coverage/

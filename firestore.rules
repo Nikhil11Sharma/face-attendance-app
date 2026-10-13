@@ -1,0 +1,199 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ──────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data;
+    }
+
+    function getRole() {
+      return getUserData().role;
+    }
+
+    function isTeacher() {
+      return isAuthenticated() && getRole() == 'teacher';
+    }
+
+    function isHOD() {
+      return isAuthenticated() && getRole() == 'hod';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getRole() == 'admin';
+    }
+
+    function isTeacherOrAbove() {
+      return isAuthenticated() &&
+        getRole() in ['teacher', 'hod', 'admin'];
+    }
+
+    function isHODOrAbove() {
+      return isAuthenticated() &&
+        getRole() in ['hod', 'admin'];
+    }
+
+    function teachesClass(classId) {
+      return classId in getUserData().classIds;
+    }
+
+    function sameCollege(collegeId) {
+      return getUserData().collegeId == collegeId;
+    }
+
+    // ─── Colleges ─────────────────────────────────────────────────────────
+
+    match /colleges/{collegeId} {
+      allow read: if isTeacherOrAbove() && sameCollege(collegeId);
+      allow write: if isAdmin() && sameCollege(collegeId);
+    }
+
+    // ─── Teachers ─────────────────────────────────────────────────────────
+
+    match /teachers/{teacherId} {
+      // Teachers can read their own profile; HOD/Admin can read all in college
+      allow read: if isAuthenticated() && (
+        request.auth.uid == teacherId ||
+        (isHODOrAbove() && sameCollege(resource.data.collegeId))
+      );
+
+      // Only admins can create/modify teacher accounts
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Students ─────────────────────────────────────────────────────────
+
+    match /students/{studentId} {
+      // Teachers can read students in classes they teach
+      allow read: if isTeacherOrAbove() && (
+        teachesClass(resource.data.classId) ||
+        isHODOrAbove()
+      );
+
+      // Teachers can create/update students in their own classes
+      allow create: if isTeacherOrAbove() &&
+        teachesClass(request.resource.data.classId);
+
+      allow update: if isTeacherOrAbove() && (
+        teachesClass(resource.data.classId) || isHODOrAbove()
+      ) &&
+      // IMPORTANT: Only allowed fields can be updated
+      request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['name', 'email', 'phone', 'enrollmentStatus',
+                  'biometricConsent', 'consentTimestamp', 'updatedAt',
+                  'lastReEnrolledAt', 'isActive']);
+
+      // Admin can delete (DPDP right to erasure)
+      allow delete: if isAdmin();
+    }
+
+    // ─── Embeddings ───────────────────────────────────────────────────────
+
+    match /embeddings/{embeddingId} {
+      // Only authenticated teachers with access to that student's class
+      allow read: if isTeacherOrAbove();
+
+      // Write-once from app (after consent), update only for re-enrollment
+      allow create: if isTeacherOrAbove() &&
+        request.resource.data.isActive == true;
+
+      allow update: if isTeacherOrAbove() &&
+        // Only allow deactivating (archiving), not modifying embeddings
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isActive', 'updatedAt']);
+
+      // DPDP deletion by admin
+      allow delete: if isAdmin();
+    }
+
+    // ─── Classes ──────────────────────────────────────────────────────────
+
+    match /classes/{classId} {
+      allow read: if isTeacherOrAbove() &&
+        (teachesClass(classId) || isHODOrAbove());
+      allow write: if isAdmin();
+    }
+
+    // ─── Subjects ─────────────────────────────────────────────────────────
+
+    match /subjects/{subjectId} {
+      allow read: if isTeacherOrAbove();
+      allow write: if isAdmin();
+    }
+
+    // ─── Attendance ───────────────────────────────────────────────────────
+
+    match /attendance/{attendanceId} {
+      allow read: if isTeacherOrAbove() && (
+        teachesClass(resource.data.classId) || isHODOrAbove()
+      );
+
+      // Only the marking teacher can create attendance for their classes
+      allow create: if isTeacherOrAbove() &&
+        teachesClass(request.resource.data.classId) &&
+        request.resource.data.teacherId == request.auth.uid;
+
+      // Update only within edit window, and only allowed fields
+      allow update: if isTeacherOrAbove() &&
+        teachesClass(resource.data.classId) &&
+        resource.data.editWindowExpiresAt > request.time &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'overrideReason', 'overriddenBy', 'updatedAt', 'markedBy']);
+
+      // No deletion of attendance records (immutability for audit)
+      allow delete: if false;
+    }
+
+    // ─── Sessions ─────────────────────────────────────────────────────────
+
+    match /sessions/{sessionId} {
+      allow read: if isTeacherOrAbove() && (
+        teachesClass(resource.data.classId) || isHODOrAbove()
+      );
+
+      allow create: if isTeacherOrAbove() &&
+        teachesClass(request.resource.data.classId) &&
+        request.resource.data.teacherId == request.auth.uid;
+
+      allow update: if isTeacherOrAbove() &&
+        resource.data.teacherId == request.auth.uid &&
+        resource.data.status != 'locked';
+
+      allow delete: if false; // Sessions are never deleted
+    }
+
+    // ─── Audit Log ────────────────────────────────────────────────────────
+
+    match /audit_log/{logId} {
+      // HOD and Admin can read audit logs
+      allow read: if isHODOrAbove();
+
+      // Append-only: no updates, no deletes
+      allow create: if isTeacherOrAbove();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Consent Records ──────────────────────────────────────────────────
+
+    match /consent_records/{consentId} {
+      allow read: if isTeacherOrAbove();
+
+      // Only teachers can create consent records
+      allow create: if isTeacherOrAbove();
+
+      // Consent can be revoked (update status to 'revoked')
+      allow update: if isTeacherOrAbove() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'revokedAt', 'revokedReason']);
+
+      allow delete: if isAdmin();
+    }
+  }
+}

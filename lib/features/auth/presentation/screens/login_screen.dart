@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 
 import '../blocs/auth_bloc.dart';
 import '../blocs/auth_event.dart';
 import '../blocs/auth_state.dart';
-import '../../../../shared/widgets/app_logo.dart';
-import '../../../../core/theme/app_theme.dart';
+import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,75 +15,68 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _obscurePassword = true;
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  bool _obscure = true;
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: BlocConsumer<AuthBloc, AuthState>(
-        listener: (context, state) {
-          if (state is AuthAuthenticated) {
-            context.go('/dashboard');
-          }
-          if (state is AuthError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: AppTheme.error,
-              ),
-            );
-          }
-        },
-        builder: (context, state) {
-          return Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFF1A73E8), Color(0xFF0D47A1)],
-              ),
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        if (state is AuthAuthenticated) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          );
+        }
+        if (state is AuthError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message), backgroundColor: Colors.red),
+          );
+        }
+      },
+      child: Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF1A73E8), Color(0xFF0D47A1)],
             ),
-            child: SafeArea(
+          ),
+          child: SafeArea(
+            child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    const SizedBox(height: 48),
-
                     // Logo
-                    const AppLogo(size: 80),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.face, size: 60, color: Colors.white),
+                    ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Face Attendance',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Text(
-                      'Teacher Portal',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 48),
+                    const Text('Face Attendance',
+                        style: TextStyle(color: Colors.white, fontSize: 28,
+                            fontWeight: FontWeight.bold)),
+                    const Text('Teacher Portal',
+                        style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    const SizedBox(height: 40),
 
-                    // Login card
+                    // Card
                     Card(
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+                          borderRadius: BorderRadius.circular(16)),
                       child: Padding(
                         padding: const EdgeInsets.all(24),
                         child: Form(
@@ -93,139 +84,93 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              const Text(
-                                'Sign In',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-
-                              // Email
+                              const Text('Sign In',
+                                  style: TextStyle(fontSize: 20,
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 20),
                               TextFormField(
-                                controller: _emailController,
+                                controller: _emailCtrl,
                                 keyboardType: TextInputType.emailAddress,
                                 decoration: const InputDecoration(
                                   labelText: 'Email',
                                   prefixIcon: Icon(Icons.email_outlined),
+                                  border: OutlineInputBorder(),
                                 ),
-                                validator: (v) {
-                                  if (v == null || v.isEmpty) {
-                                    return 'Enter your email';
-                                  }
-                                  if (!v.contains('@')) {
-                                    return 'Enter a valid email';
-                                  }
-                                  return null;
-                                },
+                                validator: (v) =>
+                                    v!.contains('@') ? null : 'Enter valid email',
                               ),
                               const SizedBox(height: 16),
-
-                              // Password
                               TextFormField(
-                                controller: _passwordController,
-                                obscureText: _obscurePassword,
+                                controller: _passCtrl,
+                                obscureText: _obscure,
                                 decoration: InputDecoration(
                                   labelText: 'Password',
                                   prefixIcon: const Icon(Icons.lock_outlined),
+                                  border: const OutlineInputBorder(),
                                   suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_off
-                                          : Icons.visibility,
-                                    ),
-                                    onPressed: () => setState(
-                                      () => _obscurePassword = !_obscurePassword,
-                                    ),
+                                    icon: Icon(_obscure
+                                        ? Icons.visibility_off
+                                        : Icons.visibility),
+                                    onPressed: () =>
+                                        setState(() => _obscure = !_obscure),
                                   ),
                                 ),
-                                validator: (v) {
-                                  if (v == null || v.length < 6) {
-                                    return 'Password must be at least 6 characters';
-                                  }
-                                  return null;
+                                validator: (v) => v!.length >= 6
+                                    ? null
+                                    : 'Min 6 characters',
+                              ),
+                              const SizedBox(height: 24),
+                              BlocBuilder<AuthBloc, AuthState>(
+                                builder: (context, state) {
+                                  return ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 14),
+                                      backgroundColor: const Color(0xFF1A73E8),
+                                    ),
+                                    onPressed: state is AuthLoading
+                                        ? null
+                                        : () {
+                                            if (_formKey.currentState!
+                                                .validate()) {
+                                              context.read<AuthBloc>().add(
+                                                    AuthLoginRequested(
+                                                      email: _emailCtrl.text
+                                                          .trim(),
+                                                      password: _passCtrl.text,
+                                                    ),
+                                                  );
+                                            }
+                                          },
+                                    child: state is AuthLoading
+                                        ? const SizedBox(
+                                            height: 20, width: 20,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white))
+                                        : const Text('Sign In',
+                                            style: TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.white)),
+                                  );
                                 },
-                              ),
-                              const SizedBox(height: 8),
-
-                              // Forgot password
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: () =>
-                                      _handleForgotPassword(context),
-                                  child: const Text('Forgot Password?'),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Login button
-                              SizedBox(
-                                height: 50,
-                                child: ElevatedButton(
-                                  onPressed: state is AuthLoading
-                                      ? null
-                                      : () => _handleLogin(context),
-                                  child: state is AuthLoading
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Text(
-                                          'Sign In',
-                                          style: TextStyle(fontSize: 16),
-                                        ),
-                                ),
                               ),
                             ],
                           ),
                         ),
                       ),
                     ),
-
-                    const SizedBox(height: 24),
-                    const Text(
-                      'DPDP Act 2023 Compliant • Encrypted • Offline-First',
-                      style: TextStyle(color: Colors.white54, fontSize: 11),
-                      textAlign: TextAlign.center,
-                    ),
+                    const SizedBox(height: 16),
+                    const Text('DPDP Act 2023 Compliant • Encrypted',
+                        style:
+                            TextStyle(color: Colors.white54, fontSize: 11)),
                   ],
                 ),
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _handleLogin(BuildContext context) {
-    if (!_formKey.currentState!.validate()) return;
-
-    context.read<AuthBloc>().add(
-          AuthLoginRequested(
-            email: _emailController.text.trim(),
-            password: _passwordController.text,
           ),
-        );
-  }
-
-  void _handleForgotPassword(BuildContext context) {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter your email first')),
-      );
-      return;
-    }
-    context.read<AuthBloc>().add(AuthPasswordResetRequested(email: email));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Password reset email sent')),
+        ),
+      ),
     );
   }
 }

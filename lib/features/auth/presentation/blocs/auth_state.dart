@@ -1,31 +1,26 @@
-import 'package:equatable/equatable.dart';
-import '../../../../domain/entities/entities.dart';
-
-abstract class AuthState extends Equatable {
+abstract class AuthState {
   const AuthState();
-
-  @override
-  List<Object?> get props => [];
 }
 
-class AuthInitial extends AuthState {}
+class AuthInitial extends AuthState {
+  const AuthInitial();
+}
 
-class AuthLoading extends AuthState {}
+class AuthLoading extends AuthState {
+  const AuthLoading();
+}
+
+class AuthUnauthenticated extends AuthState {
+  const AuthUnauthenticated();
+}
 
 class AuthAuthenticated extends AuthState {
-  final Teacher teacher;
-  const AuthAuthenticated({required this.teacher});
-
-  @override
-  List<Object?> get props => [teacher.id];
+  final String uid;
+  final String email;
+  const AuthAuthenticated({required this.uid, required this.email});
 }
-
-class AuthUnauthenticated extends AuthState {}
 
 class AuthError extends AuthState {
   final String message;
   const AuthError({required this.message});
-
-  @override
-  List<Object?> get props => [message];
 }

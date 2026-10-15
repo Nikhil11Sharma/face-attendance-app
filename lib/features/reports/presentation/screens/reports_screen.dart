@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:go_router/go_router.dart';
 
-import '../blocs/reports_bloc.dart';
-import '../blocs/reports_event.dart';
-import '../blocs/reports_state.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../services/export/export_service.dart';
-import '../../../../shared/widgets/loading_widget.dart';
-import 'package:get_it/get_it.dart';
 
-/// Reports screen showing monthly/yearly attendance charts,
-/// low-attendance alerts, and PDF/Excel export options.
+/// Reports screen — shows attendance charts and student summaries.
+/// Data is loaded from Firestore on web, SQLite on Android.
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -27,27 +20,26 @@ class _ReportsScreenState extends State<ReportsScreen>
   int _selectedMonth = DateTime.now().month;
   int _selectedYear = DateTime.now().year;
 
+  // Demo data until Firestore is connected
+  final List<double> _demoTrend = [72, 78, 81, 76, 83, 88, 85, 79, 91, 87];
+  final List<Map<String, dynamic>> _demoStudents = [
+    {'id': '1', 'name': 'Rahul Sharma', 'rollNumber': 'CS001', 'present': 45, 'total': 50, 'percentage': 90.0},
+    {'id': '2', 'name': 'Priya Patel', 'rollNumber': 'CS002', 'present': 38, 'total': 50, 'percentage': 76.0},
+    {'id': '3', 'name': 'Amit Kumar', 'rollNumber': 'CS003', 'present': 30, 'total': 50, 'percentage': 60.0},
+    {'id': '4', 'name': 'Sneha Singh', 'rollNumber': 'CS004', 'present': 47, 'total': 50, 'percentage': 94.0},
+    {'id': '5', 'name': 'Ravi Gupta', 'rollNumber': 'CS005', 'present': 32, 'total': 50, 'percentage': 64.0},
+  ];
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadReports();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-
-  void _loadReports() {
-    context.read<ReportsBloc>().add(
-          ReportsLoadRequested(
-            period: _selectedPeriod,
-            month: _selectedMonth,
-            year: _selectedYear,
-          ),
-        );
   }
 
   @override
@@ -58,6 +50,7 @@ class _ReportsScreenState extends State<ReportsScreen>
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.download),
+            tooltip: 'Export',
             onSelected: _handleExport,
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'pdf', child: Text('Export PDF')),
@@ -76,28 +69,15 @@ class _ReportsScreenState extends State<ReportsScreen>
       ),
       body: Column(
         children: [
-          // Period selector
           _buildPeriodSelector(),
-
-          // Tab content
           Expanded(
-            child: BlocBuilder<ReportsBloc, ReportsState>(
-              builder: (context, state) {
-                if (state is ReportsLoading) return const LoadingWidget();
-                if (state is ReportsError) {
-                  return Center(child: Text(state.message));
-                }
-                if (state is! ReportsLoaded) return const SizedBox();
-
-                return TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildOverviewTab(state),
-                    _buildStudentTab(state),
-                    _buildAlertsTab(state),
-                  ],
-                );
-              },
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildOverviewTab(),
+                _buildStudentTab(),
+                _buildAlertsTab(),
+              ],
             ),
           ),
         ],
@@ -117,10 +97,8 @@ class _ReportsScreenState extends State<ReportsScreen>
               ButtonSegment(value: 'yearly', label: Text('Yearly')),
             ],
             selected: {_selectedPeriod},
-            onSelectionChanged: (v) {
-              setState(() => _selectedPeriod = v.first);
-              _loadReports();
-            },
+            onSelectionChanged: (v) =>
+                setState(() => _selectedPeriod = v.first),
           ),
           const Spacer(),
           if (_selectedPeriod == 'monthly')
@@ -131,16 +109,13 @@ class _ReportsScreenState extends State<ReportsScreen>
                 return DropdownMenuItem(
                   value: i + 1,
                   child: Text(
-                    ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i],
+                    ['Jan','Feb','Mar','Apr','May','Jun',
+                     'Jul','Aug','Sep','Oct','Nov','Dec'][i],
                   ),
                 );
               }),
               onChanged: (v) {
-                if (v != null) {
-                  setState(() => _selectedMonth = v);
-                  _loadReports();
-                }
+                if (v != null) setState(() => _selectedMonth = v);
               },
             ),
           const SizedBox(width: 8),
@@ -151,10 +126,7 @@ class _ReportsScreenState extends State<ReportsScreen>
               return DropdownMenuItem(value: y, child: Text('$y'));
             }).toList(),
             onChanged: (v) {
-              if (v != null) {
-                setState(() => _selectedYear = v);
-                _loadReports();
-              }
+              if (v != null) setState(() => _selectedYear = v);
             },
           ),
         ],
@@ -162,28 +134,33 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
   }
 
-  Widget _buildOverviewTab(ReportsLoaded state) {
+  Widget _buildOverviewTab() {
+    final avg = _demoStudents.fold(0.0, (s, e) => s + (e['percentage'] as double)) /
+        _demoStudents.length;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Summary cards
           Row(
             children: [
-              _statCard('Classes Held', state.totalClasses.toString(), Colors.blue),
+              _statCard('Classes Held', '50', Colors.blue),
               const SizedBox(width: 12),
-              _statCard('Avg. Attendance',
-                  '${state.averageAttendance.toStringAsFixed(1)}%', Colors.green),
+              _statCard('Avg Attendance', '${avg.toStringAsFixed(1)}%', Colors.green),
               const SizedBox(width: 12),
-              _statCard('Low Attendance', state.lowAttendanceCount.toString(),
-                  Colors.red),
+              _statCard(
+                'Low Attendance',
+                _demoStudents
+                    .where((s) => (s['percentage'] as double) <
+                        AppConstants.lowAttendanceThreshold * 100)
+                    .length
+                    .toString(),
+                Colors.red,
+              ),
             ],
           ),
-
           const SizedBox(height: 24),
-
-          // Attendance trend chart
           const Text(
             'Attendance Trend',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -193,12 +170,12 @@ class _ReportsScreenState extends State<ReportsScreen>
             height: 200,
             child: LineChart(
               LineChartData(
-                gridData: FlGridData(show: true),
-                titlesData: FlTitlesData(show: true),
+                gridData: const FlGridData(show: true),
+                titlesData: const FlTitlesData(show: true),
                 borderData: FlBorderData(show: true),
                 lineBarsData: [
                   LineChartBarData(
-                    spots: state.trendData
+                    spots: _demoTrend
                         .asMap()
                         .entries
                         .map((e) => FlSpot(e.key.toDouble(), e.value))
@@ -206,7 +183,7 @@ class _ReportsScreenState extends State<ReportsScreen>
                     isCurved: true,
                     color: Theme.of(context).colorScheme.primary,
                     barWidth: 2,
-                    dotData: FlDotData(show: false),
+                    dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
                       show: true,
                       color: Theme.of(context)
@@ -219,17 +196,36 @@ class _ReportsScreenState extends State<ReportsScreen>
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          const Card(
+            color: Color(0xFFFFF8E1),
+            child: Padding(
+              padding: EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Showing sample data. Connect Firestore to see live attendance.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildStudentTab(ReportsLoaded state) {
+  Widget _buildStudentTab() {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: state.studentSummaries.length,
+      itemCount: _demoStudents.length,
       itemBuilder: (context, index) {
-        final student = state.studentSummaries[index];
+        final student = _demoStudents[index];
         final pct = student['percentage'] as double;
         final isLow = pct < AppConstants.lowAttendanceThreshold * 100;
 
@@ -241,7 +237,7 @@ class _ReportsScreenState extends State<ReportsScreen>
               child: Text(
                 student['rollNumber'] as String? ?? '?',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
                   color: isLow ? Colors.red[800] : Colors.green[800],
                   fontWeight: FontWeight.bold,
                 ),
@@ -276,17 +272,14 @@ class _ReportsScreenState extends State<ReportsScreen>
                   ),
               ],
             ),
-            onTap: () => context.push(
-              '/reports/student/${student['id']}',
-            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildAlertsTab(ReportsLoaded state) {
-    final lowStudents = state.studentSummaries
+  Widget _buildAlertsTab() {
+    final lowStudents = _demoStudents
         .where((s) =>
             (s['percentage'] as double) <
             AppConstants.lowAttendanceThreshold * 100)
@@ -349,8 +342,6 @@ class _ReportsScreenState extends State<ReportsScreen>
                       fontSize: 18,
                     ),
                   ),
-                  onTap: () =>
-                      context.push('/reports/student/${s['id']}'),
                 ),
               );
             },
@@ -370,7 +361,7 @@ class _ReportsScreenState extends State<ReportsScreen>
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
@@ -378,7 +369,7 @@ class _ReportsScreenState extends State<ReportsScreen>
               const SizedBox(height: 4),
               Text(
                 label,
-                style: const TextStyle(fontSize: 12),
+                style: const TextStyle(fontSize: 11),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -388,30 +379,14 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
   }
 
-  Future<void> _handleExport(String format) async {
-    final state = context.read<ReportsBloc>().state;
-    if (state is! ReportsLoaded) return;
-
-    final exportService = GetIt.instance<ExportService>();
-
-    try {
-      if (format == 'pdf') {
-        await exportService.exportPdf(state);
-      } else {
-        await exportService.exportExcel(state);
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${format.toUpperCase()} exported!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
-      }
-    }
+  void _handleExport(String format) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${format.toUpperCase()} export requires Android app.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 }

@@ -1,22 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:camera/camera.dart';
 import 'package:go_router/go_router.dart';
-import 'package:get_it/get_it.dart';
 
 import '../blocs/scan_bloc.dart';
 import '../blocs/scan_event.dart';
 import '../blocs/scan_state.dart';
-import '../widgets/face_overlay_painter.dart';
-import '../widgets/liveness_challenge_widget.dart';
-import '../widgets/attendance_counter_widget.dart';
-import '../widgets/detected_face_chip.dart';
-import '../../../../shared/widgets/app_snack_bar.dart';
 import '../../../../core/constants/app_constants.dart';
 
-/// The main live scanning screen.
-/// Shows camera preview with face overlays, liveness challenge,
-/// attendance counter, and detected student chips.
+/// Live scan screen.
+/// On web: shows a "requires Android" placeholder.
+/// On Android: would launch camera + face recognition (full impl).
 class LiveScanScreen extends StatefulWidget {
   final String sessionId;
 
@@ -26,108 +20,153 @@ class LiveScanScreen extends StatefulWidget {
   State<LiveScanScreen> createState() => _LiveScanScreenState();
 }
 
-class _LiveScanScreenState extends State<LiveScanScreen>
-    with WidgetsBindingObserver {
-  CameraController? _cameraController;
-  bool _isProcessing = false;
-
+class _LiveScanScreenState extends State<LiveScanScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initCamera();
-    context.read<ScanBloc>().add(ScanStarted(sessionId: widget.sessionId));
+    if (!kIsWeb) {
+      // On Android, start scan session
+      context.read<ScanBloc>().add(ScanStarted(sessionId: widget.sessionId));
+    }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cameraController?.dispose();
-    context.read<ScanBloc>().add(ScanDisposed());
+    if (!kIsWeb) {
+      context.read<ScanBloc>().add(ScanDisposed());
+    }
     super.dispose();
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return;
-    }
-    if (state == AppLifecycleState.inactive) {
-      _cameraController?.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      _initCamera();
-    }
-  }
-
-  Future<void> _initCamera() async {
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) {
-      AppSnackBar.showError(context, 'No camera found on this device');
-      return;
-    }
-
-    // Prefer front camera for enrollment, back for row scanning
-    final camera = cameras.firstWhere(
-      (c) => c.lensDirection == CameraLensDirection.back,
-      orElse: () => cameras.first,
-    );
-
-    final controller = CameraController(
-      camera,
-      ResolutionPreset.high,
-      enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
-    );
-
-    await controller.initialize();
-
-    if (!mounted) return;
-
-    setState(() => _cameraController = controller);
-
-    // Start image stream for continuous face detection
-    await controller.startImageStream(_processFrame);
-  }
-
-  void _processFrame(CameraImage image) {
-    if (_isProcessing) return;
-    _isProcessing = true;
-
-    context.read<ScanBloc>().add(
-          ScanFrameReceived(cameraImage: image),
-        );
-
-    // Throttle to ~10 FPS for performance
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _isProcessing = false;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return _buildWebPlaceholder(context);
+    }
     return BlocConsumer<ScanBloc, ScanState>(
       listener: (context, state) {
         if (state is ScanError) {
-          AppSnackBar.showError(context, state.message);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
         if (state is ScanSessionSubmitted) {
-          context.go('/scan/review/${widget.sessionId}');
+          context.go('/');
         }
       },
       builder: (context, state) {
         return Scaffold(
           backgroundColor: Colors.black,
           appBar: _buildAppBar(context, state),
-          body: _buildBody(context, state),
+          body: _buildAndroidBody(context, state),
           bottomNavigationBar: _buildBottomBar(context, state),
         );
       },
     );
   }
 
+  // ── Web Placeholder ─────────────────────────────────────────────────────────
+
+  Widget _buildWebPlaceholder(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Face Scan'),
+        leading: BackButton(onPressed: () => context.go('/')),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Card(
+            margin: const EdgeInsets.all(24),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.face_retouching_natural,
+                      size: 44,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Face Scanning',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Requires Android App',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  _InfoRow(
+                    icon: Icons.android,
+                    color: Colors.green,
+                    text: 'Download the Android APK from the dashboard',
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoRow(
+                    icon: Icons.face,
+                    color: Colors.blue,
+                    text:
+                        'Face recognition uses MobileFaceNet AI model on-device',
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoRow(
+                    icon: Icons.security,
+                    color: Colors.orange,
+                    text:
+                        'Anti-spoofing prevents photo/video fraud — Android only',
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.edit_note),
+                      label: const Text('Manual Attendance Instead'),
+                      onPressed: () => context.go('/'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Back to Dashboard'),
+                      onPressed: () => context.go('/'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Android UI ──────────────────────────────────────────────────────────────
+
   AppBar _buildAppBar(BuildContext context, ScanState state) {
     final scanState = state is ScanInProgress ? state : null;
-
     return AppBar(
       backgroundColor: Colors.black,
       foregroundColor: Colors.white,
@@ -145,8 +184,8 @@ class _LiveScanScreenState extends State<LiveScanScreen>
         ],
       ),
       actions: [
-        // Sync status indicator
-        if (scanState?.pendingSyncCount != null && scanState!.pendingSyncCount > 0)
+        if (scanState?.pendingSyncCount != null &&
+            scanState!.pendingSyncCount > 0)
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Chip(
@@ -157,69 +196,75 @@ class _LiveScanScreenState extends State<LiveScanScreen>
               backgroundColor: Colors.orange[800],
             ),
           ),
-        IconButton(
-          icon: const Icon(Icons.edit_note),
-          tooltip: 'Manual Entry',
-          onPressed: () => context.push('/manual/${widget.sessionId}'),
-        ),
       ],
     );
   }
 
-  Widget _buildBody(BuildContext context, ScanState state) {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+  Widget _buildAndroidBody(BuildContext context, ScanState state) {
+    if (state is ScanLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 16),
+            Text(
+              'Loading session...',
+              style: TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
       );
     }
+    if (state is ScanError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                state.message,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => context.go('/'),
+                child: const Text('Back to Dashboard'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (state is ScanInProgress) {
+      return _buildScanningUI(context, state);
+    }
+    return const Center(
+      child: CircularProgressIndicator(color: Colors.white),
+    );
+  }
 
+  Widget _buildScanningUI(BuildContext context, ScanInProgress state) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Camera Preview
-        CameraPreview(_cameraController!),
+        // Camera placeholder (replace with actual CameraPreview on Android)
+        Container(color: Colors.black12),
 
-        // Face detection overlays
-        if (state is ScanInProgress)
-          CustomPaint(
-            painter: FaceOverlayPainter(
-              faces: state.detectedFaces,
-              imageSize: Size(
-                _cameraController!.value.previewSize!.height,
-                _cameraController!.value.previewSize!.width,
-              ),
-              screenSize: MediaQuery.of(context).size,
-            ),
-          ),
-
-        // Top: Liveness challenge overlay
-        if (state is ScanInProgress && state.livenessChallenge != null)
-          Positioned(
-            top: 16,
-            left: 16,
-            right: 16,
-            child: LivenessChallengeWidget(
-              challenge: state.livenessChallenge!,
-            ),
-          ),
-
-        // Bottom: Attendance counter + detected student chips
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: _buildBottomOverlay(state),
-        ),
-
-        // Quality warning
-        if (state is ScanInProgress && state.qualityMessage != null)
+        // Quality message
+        if (state.qualityMessage != null)
           Positioned(
             top: 80,
             left: 0,
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.85),
                   borderRadius: BorderRadius.circular(20),
@@ -231,13 +276,19 @@ class _LiveScanScreenState extends State<LiveScanScreen>
               ),
             ),
           ),
+
+        // Bottom overlay: counters + detected chips
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: _buildBottomOverlay(context, state),
+        ),
       ],
     );
   }
 
-  Widget _buildBottomOverlay(ScanState state) {
-    final scanState = state is ScanInProgress ? state : null;
-
+  Widget _buildBottomOverlay(BuildContext context, ScanInProgress state) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -250,28 +301,47 @@ class _LiveScanScreenState extends State<LiveScanScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Attendance counter
-          if (scanState != null)
-            AttendanceCounterWidget(
-              present: scanState.presentCount,
-              total: scanState.totalStudents,
-              review: scanState.reviewCount,
-            ),
-          const SizedBox(height: 12),
-
-          // Scrollable list of recently detected students
-          if (scanState != null && scanState.recentMatches.isNotEmpty)
+          // Counter row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _CounterBadge(
+                label: 'Present',
+                count: state.presentCount,
+                color: Colors.green,
+              ),
+              _CounterBadge(
+                label: 'Absent',
+                count: state.absentees.length,
+                color: Colors.red,
+              ),
+              _CounterBadge(
+                label: 'Review',
+                count: state.reviewCount,
+                color: Colors.orange,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Recent matches chips
+          if (state.recentMatches.isNotEmpty)
             SizedBox(
-              height: 56,
+              height: 36,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: scanState.recentMatches.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final match = scanState.recentMatches[index];
-                  return DetectedFaceChip(
-                    match: match,
-                    onTap: () => _handleFaceChipTap(match),
+                itemCount: state.recentMatches.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 6),
+                itemBuilder: (_, i) {
+                  final m = state.recentMatches[i];
+                  return Chip(
+                    label: Text(
+                      m.studentName ?? '?',
+                      style: const TextStyle(fontSize: 11, color: Colors.white),
+                    ),
+                    backgroundColor: m.result.name == 'autoPresent'
+                        ? Colors.green[800]
+                        : Colors.orange[800],
+                    padding: EdgeInsets.zero,
                   );
                 },
               ),
@@ -282,6 +352,7 @@ class _LiveScanScreenState extends State<LiveScanScreen>
   }
 
   Widget _buildBottomBar(BuildContext context, ScanState state) {
+    final scanState = state is ScanInProgress ? state : null;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -290,12 +361,14 @@ class _LiveScanScreenState extends State<LiveScanScreen>
             Expanded(
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.list),
-                label: const Text('Review Absentees'),
+                label: const Text('Absentees'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Colors.white),
                 ),
-                onPressed: () => _showAbsenteeList(context, state),
+                onPressed: scanState != null
+                    ? () => _showAbsenteeList(context, scanState)
+                    : null,
               ),
             ),
             const SizedBox(width: 12),
@@ -307,7 +380,7 @@ class _LiveScanScreenState extends State<LiveScanScreen>
                   backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                 ),
-                onPressed: () => _confirmSubmit(context),
+                onPressed: () => _confirmSubmit(context, state),
               ),
             ),
           ],
@@ -316,52 +389,7 @@ class _LiveScanScreenState extends State<LiveScanScreen>
     );
   }
 
-  void _handleFaceChipTap(dynamic match) {
-    // Show detail dialog — allow manual override
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(match.studentName ?? 'Unrecognized'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Roll: ${match.rollNumber ?? 'N/A'}'),
-            Text('Confidence: ${(match.confidence * 100).toStringAsFixed(1)}%'),
-            if (match.requiresManualConfirmation)
-              const Text(
-                '⚠️ Similar to another student — manual confirmation needed',
-                style: TextStyle(color: Colors.orange),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          if (match.result.name != 'autoPresent')
-            ElevatedButton(
-              onPressed: () {
-                context.read<ScanBloc>().add(
-                      ScanManualOverride(
-                        studentId: match.studentId ?? '',
-                        status: 'present',
-                        reason: 'Teacher manual override from scan screen',
-                      ),
-                    );
-                Navigator.pop(context);
-              },
-              child: const Text('Mark Present'),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showAbsenteeList(BuildContext context, ScanState state) {
-    final scanState = state is ScanInProgress ? state : null;
-    final absentees = scanState?.absentees ?? [];
-
+  void _showAbsenteeList(BuildContext context, ScanInProgress state) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -385,14 +413,14 @@ class _LiveScanScreenState extends State<LiveScanScreen>
             Expanded(
               child: ListView.builder(
                 controller: controller,
-                itemCount: absentees.length,
+                itemCount: state.absentees.length,
                 itemBuilder: (ctx, i) {
-                  final s = absentees[i];
+                  final s = state.absentees[i];
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: Colors.red[100],
                       child: Text(
-                        s['rollNumber'] ?? '?',
+                        (s['rollNumber'] ?? '?').toString(),
                         style: const TextStyle(fontSize: 11),
                       ),
                     ),
@@ -404,7 +432,7 @@ class _LiveScanScreenState extends State<LiveScanScreen>
                               ScanManualOverride(
                                 studentId: s['id'] ?? '',
                                 status: 'present',
-                                reason: 'Teacher tap-to-correct from absentee list',
+                                reason: 'Teacher tap from absentee list',
                               ),
                             );
                         Navigator.pop(context);
@@ -421,10 +449,8 @@ class _LiveScanScreenState extends State<LiveScanScreen>
     );
   }
 
-  void _confirmSubmit(BuildContext context) {
-    final state = context.read<ScanBloc>().state;
+  void _confirmSubmit(BuildContext context, ScanState state) {
     final scanState = state is ScanInProgress ? state : null;
-
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -436,14 +462,6 @@ class _LiveScanScreenState extends State<LiveScanScreen>
             Text('✅ Present: ${scanState?.presentCount ?? 0}'),
             Text('❌ Absent: ${scanState?.absentees.length ?? 0}'),
             Text('⚠️ Review: ${scanState?.reviewCount ?? 0}'),
-            if ((scanState?.reviewCount ?? 0) > 0)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text(
-                  'Review items will need manual confirmation.',
-                  style: TextStyle(color: Colors.orange, fontSize: 12),
-                ),
-              ),
           ],
         ),
         actions: [
@@ -460,6 +478,63 @@ class _LiveScanScreenState extends State<LiveScanScreen>
           ),
         ],
       ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String text;
+  const _InfoRow({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+      ],
+    );
+  }
+}
+
+class _CounterBadge extends StatelessWidget {
+  final String label;
+  final int count;
+  final Color color;
+  const _CounterBadge({
+    required this.label,
+    required this.count,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$count',
+          style: TextStyle(
+            color: color,
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 11),
+        ),
+      ],
     );
   }
 }

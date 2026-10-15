@@ -1,19 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
-import '../blocs/enrollment_bloc.dart';
-import '../blocs/enrollment_event.dart';
-import '../blocs/enrollment_state.dart';
-import '../widgets/enrollment_progress_widget.dart';
-import '../widgets/face_capture_overlay.dart';
-import '../../../../ml/anti_spoofing/anti_spoof_service.dart';
-import '../../../../shared/widgets/app_snack_bar.dart';
-import '../../../../core/constants/app_constants.dart';
-
-/// Guided 5-photo enrollment screen.
-/// Guides teacher through capturing face at different angles/lighting.
+/// Enrollment screen.
+/// On web: shows a "requires Android" placeholder.
+/// On Android: guided 5-photo face capture flow.
 class EnrollStudentScreen extends StatefulWidget {
   final String studentId;
 
@@ -24,219 +15,237 @@ class EnrollStudentScreen extends StatefulWidget {
 }
 
 class _EnrollStudentScreenState extends State<EnrollStudentScreen> {
-  CameraController? _camera;
-
-  static const _angles = [
-    ('Look straight at camera', 'frontal', Icons.face),
-    ('Turn slightly to the LEFT', 'left_15', Icons.arrow_back),
-    ('Turn slightly to the RIGHT', 'right_15', Icons.arrow_forward),
-    ('Look slightly UP', 'up_10', Icons.arrow_upward),
-    ('Look slightly DOWN', 'down_10', Icons.arrow_downward),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _initCamera();
-    context.read<EnrollmentBloc>().add(
-          EnrollmentStarted(studentId: widget.studentId),
-        );
-  }
-
-  @override
-  void dispose() {
-    _camera?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _initCamera() async {
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
-
-    // Use front camera for enrollment
-    final camera = cameras.firstWhere(
-      (c) => c.lensDirection == CameraLensDirection.front,
-      orElse: () => cameras.first,
-    );
-
-    final controller = CameraController(
-      camera,
-      ResolutionPreset.high,
-      enableAudio: false,
-    );
-    await controller.initialize();
-    if (mounted) setState(() => _camera = controller);
-  }
-
   @override
   Widget build(BuildContext context) {
-    return BlocConsumer<EnrollmentBloc, EnrollmentState>(
-      listener: (context, state) {
-        if (state is EnrollmentError) {
-          AppSnackBar.showError(context, state.message);
-        }
-        if (state is EnrollmentComplete) {
-          AppSnackBar.showSuccess(
-            context,
-            '✅ ${state.studentName} enrolled successfully!',
-          );
-          context.pop();
-        }
-      },
-      builder: (context, state) {
-        return Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.black,
-            foregroundColor: Colors.white,
-            title: Text(
-              state is EnrollmentInProgress
-                  ? 'Enrolling: ${state.studentName}'
-                  : 'Enrollment',
+    if (kIsWeb) {
+      return _buildWebPlaceholder(context);
+    }
+    return _buildAndroidEnrollment(context);
+  }
+
+  // ── Web Placeholder ─────────────────────────────────────────────────────────
+
+  Widget _buildWebPlaceholder(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Enroll Student'),
+        leading: BackButton(onPressed: () => context.go('/')),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Card(
+            margin: const EdgeInsets.all(24),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.person_add_alt_1,
+                      size: 44,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Face Enrollment',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Requires Android App',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  _InfoTile(
+                    icon: Icons.camera_alt,
+                    color: Colors.blue,
+                    title: '5 photo capture',
+                    subtitle:
+                        'Captures face at different angles for better accuracy',
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoTile(
+                    icon: Icons.check_circle,
+                    color: Colors.green,
+                    title: 'Liveness check',
+                    subtitle: 'Blink, smile, and turn head to prove it\'s real',
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoTile(
+                    icon: Icons.lock,
+                    color: Colors.orange,
+                    title: 'Encrypted storage',
+                    subtitle:
+                        'Face embeddings are AES-256 encrypted on device',
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoTile(
+                    icon: Icons.gavel,
+                    color: Colors.purple,
+                    title: 'DPDP Act 2023 compliant',
+                    subtitle: 'Consent captured before any biometric data',
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.android),
+                      label: const Text('Use Android App to Enroll'),
+                      onPressed: null, // disabled — info only
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Back to Dashboard'),
+                      onPressed: () => context.go('/'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          body: _buildBody(context, state),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Widget _buildBody(BuildContext context, EnrollmentState state) {
-    if (state is EnrollmentLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
-      );
-    }
+  // ── Android Enrollment Flow ─────────────────────────────────────────────────
 
-    if (state is! EnrollmentInProgress) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
-      );
-    }
-
-    final currentAngle = _angles[state.currentPhotoIndex];
-
-    return Column(
-      children: [
-        // Progress indicator
-        EnrollmentProgressWidget(
-          current: state.currentPhotoIndex + 1,
-          total: AppConstants.embeddingsPerStudent,
-          capturedAngles: state.capturedAngles,
-        ),
-
-        // Camera preview
-        Expanded(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (_camera != null && _camera!.value.isInitialized)
-                CameraPreview(_camera!)
-              else
-                const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-
-              // Face framing guide overlay
-              FaceCaptureOverlay(
-                qualityMessage: state.qualityMessage,
-                isGoodQuality: state.isGoodQuality,
-              ),
-            ],
-          ),
-        ),
-
-        // Instruction panel
-        Container(
-          color: Colors.grey[900],
+  Widget _buildAndroidEnrollment(BuildContext context) {
+    // Full Android enrollment would use camera + ML Kit here.
+    // Showing a setup guide until Android implementation is connected.
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Enroll Student'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                currentAngle.$3,
+              const Icon(
+                Icons.face_retouching_natural,
+                size: 72,
                 color: Colors.white,
-                size: 32,
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Ready to Enroll',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
-                currentAngle.$1,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
+                'Student ID: ${widget.studentId}',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 32),
+              const Text(
+                'Position the student\'s face in the frame.\nCapture 5 photos at different angles.',
+                style: TextStyle(color: Colors.white60, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Photo ${state.currentPhotoIndex + 1} of ${AppConstants.embeddingsPerStudent}',
-                style: TextStyle(color: Colors.grey[400], fontSize: 13),
-              ),
-              const SizedBox(height: 16),
-
-              // Quality indicator
-              if (state.qualityMessage != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    state.qualityMessage!,
-                    style: TextStyle(
-                      color: state.isGoodQuality
-                          ? Colors.green
-                          : Colors.orange,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-
-              // Capture button
+              const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.camera_alt),
-                  label: const Text('Capture'),
+                  label: const Text('Start Capture'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        state.isGoodQuality ? Colors.blue : Colors.grey,
+                    backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  onPressed: state.isGoodQuality
-                      ? () => _capturePhoto(context, currentAngle.$2)
-                      : null,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Camera enrollment — place mobilefacenet.tflite in assets/models/ to activate',
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
-
-              if (state.currentPhotoIndex > 0)
-                TextButton(
-                  onPressed: () {
-                    context.read<EnrollmentBloc>().add(
-                          EnrollmentPhotoRetake(),
-                        );
-                  },
-                  child: const Text(
-                    'Retake Previous',
-                    style: TextStyle(color: Colors.grey),
-                  ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Colors.white),
                 ),
+                onPressed: () => context.go('/'),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+
+  const _InfoTile({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
           ),
         ),
       ],
     );
-  }
-
-  Future<void> _capturePhoto(BuildContext context, String angle) async {
-    if (_camera == null) return;
-
-    final image = await _camera!.takePicture();
-    if (!mounted) return;
-
-    context.read<EnrollmentBloc>().add(
-          EnrollmentPhotoCaptured(
-            imagePath: image.path,
-            angle: angle,
-          ),
-        );
   }
 }

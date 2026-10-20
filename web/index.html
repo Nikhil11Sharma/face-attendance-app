@@ -154,6 +154,27 @@
     });
   </script>
 
+  <script>
+    // Force update: clear old service worker caches on version change
+    const APP_VERSION = 'v5-auth-fixed';
+    const stored = localStorage.getItem('sw_app_version');
+    if (stored !== APP_VERSION) {
+      localStorage.setItem('sw_app_version', APP_VERSION);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister());
+          if (stored !== null) {
+            // Was an old version — reload to get fresh content
+            window.location.reload(true);
+          }
+        });
+      }
+      // Also clear all caches
+      if ('caches' in window) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+      }
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

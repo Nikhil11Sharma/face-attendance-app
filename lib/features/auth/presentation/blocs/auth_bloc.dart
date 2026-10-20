@@ -10,6 +10,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   AuthBloc() : super(const AuthInitial()) {
     on<AuthCheckRequested>(_onCheck);
     on<AuthLoginRequested>(_onLogin);
+    on<AuthSignUpRequested>(_onSignUp);
     on<AuthLogoutRequested>(_onLogout);
     on<AuthPasswordResetRequested>(_onReset);
   }
@@ -35,7 +36,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } on FirebaseAuthException catch (ex) {
       emit(AuthError(message: _msg(ex.code)));
     } catch (_) {
-      emit(const AuthError(message: 'Login failed. Try again.'));
+      emit(const AuthError(message: 'Sign in failed. Try again.'));
+    }
+  }
+
+  Future<void> _onSignUp(AuthSignUpRequested e, Emitter<AuthState> emit) async {
+    emit(const AuthLoading());
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+        email: e.email,
+        password: e.password,
+      );
+      emit(AuthAuthenticated(
+          uid: cred.user!.uid, email: cred.user!.email ?? ''));
+    } on FirebaseAuthException catch (ex) {
+      emit(AuthError(message: _signUpMsg(ex.code)));
+    } catch (_) {
+      emit(const AuthError(message: 'Sign up failed. Try again.'));
     }
   }
 
@@ -53,13 +70,22 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   String _msg(String code) {
     switch (code) {
-      case 'user-not-found':      return 'No account found with this email.';
-      case 'wrong-password':      return 'Incorrect password.';
-      case 'invalid-credential':  return 'Invalid email or password.';
-      case 'invalid-email':       return 'Invalid email address.';
-      case 'user-disabled':       return 'Account disabled. Contact admin.';
-      case 'too-many-requests':   return 'Too many attempts. Try later.';
-      default:                    return 'Login failed. Please try again.';
+      case 'user-not-found':     return 'No account found with this email. Please sign up first.';
+      case 'wrong-password':     return 'Incorrect password. Try again.';
+      case 'invalid-credential': return 'Invalid email or password. Please check and try again.';
+      case 'invalid-email':      return 'Invalid email address format.';
+      case 'user-disabled':      return 'Account disabled. Contact admin.';
+      case 'too-many-requests':  return 'Too many attempts. Wait a moment and try again.';
+      default:                   return 'Sign in failed. Please try again.';
+    }
+  }
+
+  String _signUpMsg(String code) {
+    switch (code) {
+      case 'email-already-in-use': return 'This email already has an account. Please sign in.';
+      case 'weak-password':         return 'Password too weak. Use at least 6 characters.';
+      case 'invalid-email':         return 'Invalid email address format.';
+      default:                      return 'Sign up failed. Please try again.';
     }
   }
 }

@@ -13,29 +13,60 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
-  final _formKey   = GlobalKey<FormState>();
-  final _emailCtrl = TextEditingController();
-  final _passCtrl  = TextEditingController();
-  bool _obscure    = true;
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final _signInFormKey = GlobalKey<FormState>();
+  final _signUpFormKey = GlobalKey<FormState>();
+
+  final _signInEmailCtrl = TextEditingController();
+  final _signInPassCtrl  = TextEditingController();
+
+  final _signUpEmailCtrl    = TextEditingController();
+  final _signUpPassCtrl     = TextEditingController();
+  final _signUpConfirmCtrl  = TextEditingController();
+
+  bool _signInObscure    = true;
+  bool _signUpObscure    = true;
+  bool _signUpConfirmObs = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
 
   @override
   void dispose() {
-    _emailCtrl.dispose();
-    _passCtrl.dispose();
+    _tabController.dispose();
+    _signInEmailCtrl.dispose();
+    _signInPassCtrl.dispose();
+    _signUpEmailCtrl.dispose();
+    _signUpPassCtrl.dispose();
+    _signUpConfirmCtrl.dispose();
     super.dispose();
   }
 
-  void _submit(BuildContext ctx) {
-    if (!_formKey.currentState!.validate()) return;
+  void _submitSignIn(BuildContext ctx) {
+    if (!_signInFormKey.currentState!.validate()) return;
     ctx.read<AuthBloc>().add(AuthLoginRequested(
-      email: _emailCtrl.text.trim(),
-      password: _passCtrl.text,
+      email: _signInEmailCtrl.text.trim(),
+      password: _signInPassCtrl.text,
+    ));
+  }
+
+  void _submitSignUp(BuildContext ctx) {
+    if (!_signUpFormKey.currentState!.validate()) return;
+    ctx.read<AuthBloc>().add(AuthSignUpRequested(
+      email: _signUpEmailCtrl.text.trim(),
+      password: _signUpPassCtrl.text,
     ));
   }
 
   @override
   Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width > 800;
+
     return BlocListener<AuthBloc, AuthState>(
       listener: (ctx, state) {
         if (state is AuthError) {
@@ -47,7 +78,8 @@ class _LoginScreenState extends State<LoginScreen> {
             ]),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ));
         }
       },
@@ -55,8 +87,8 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: AppColors.surface,
         body: Row(
           children: [
-            // ── Left panel (desktop) ────────────────────────────────────
-            if (MediaQuery.of(context).size.width > 800)
+            // ── Left blue panel (desktop only) ──────────────────────────
+            if (isWide)
               Expanded(
                 flex: 5,
                 child: Container(
@@ -94,13 +126,21 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           SizedBox(height: 48),
-                          _FeatureRow(icon: Icons.bolt, text: 'Mark attendance in seconds'),
+                          _FeatureRow(
+                              icon: Icons.bolt,
+                              text: 'Mark attendance in seconds'),
                           SizedBox(height: 12),
-                          _FeatureRow(icon: Icons.security, text: 'Anti-spoofing liveness check'),
+                          _FeatureRow(
+                              icon: Icons.security,
+                              text: 'Anti-spoofing liveness check'),
                           SizedBox(height: 12),
-                          _FeatureRow(icon: Icons.cloud_sync, text: 'Offline-first, syncs automatically'),
+                          _FeatureRow(
+                              icon: Icons.cloud_sync,
+                              text: 'Offline-first, syncs automatically'),
                           SizedBox(height: 12),
-                          _FeatureRow(icon: Icons.bar_chart, text: 'Monthly & yearly reports'),
+                          _FeatureRow(
+                              icon: Icons.bar_chart,
+                              text: 'Monthly & yearly reports'),
                         ],
                       ),
                     ),
@@ -108,19 +148,20 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-            // ── Right panel (login form) ────────────────────────────────
+            // ── Right panel (form) ────────────────────────────────────────
             Expanded(
               flex: 4,
               child: Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 400),
+                    constraints: const BoxConstraints(maxWidth: 420),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Logo (mobile only)
-                        if (MediaQuery.of(context).size.width <= 800) ...[
+                        if (!isWide) ...[
                           const Center(
                             child: Icon(Icons.face_retouching_natural,
                                 size: 56, color: AppColors.primary),
@@ -134,129 +175,65 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: AppColors.primary,
                                 )),
                           ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 24),
                         ],
 
-                        const Text('Welcome back',
+                        const Text('Teacher Portal',
                             style: TextStyle(
-                              fontSize: 28,
+                              fontSize: 26,
                               fontWeight: FontWeight.bold,
                               color: AppColors.textPrimary,
                               letterSpacing: -0.3,
                             )),
                         const SizedBox(height: 4),
-                        const Text('Sign in to your teacher account',
+                        const Text(
+                            'Sign in to your account or create a new one',
                             style: TextStyle(
                                 color: AppColors.textSecond, fontSize: 14)),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 24),
 
-                        // Form
-                        Form(
-                          key: _formKey,
-                          child: Column(
+                        // ── Tabs ──────────────────────────────────────────
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: TabBar(
+                            controller: _tabController,
+                            indicator: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            indicatorSize: TabBarIndicatorSize.tab,
+                            labelColor: Colors.white,
+                            unselectedLabelColor: AppColors.textSecond,
+                            dividerColor: Colors.transparent,
+                            tabs: const [
+                              Tab(text: 'Sign In'),
+                              Tab(text: 'Sign Up'),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // ── Tab Content ───────────────────────────────────
+                        SizedBox(
+                          height: 320,
+                          child: TabBarView(
+                            controller: _tabController,
                             children: [
-                              // Email
-                              TextFormField(
-                                controller: _emailCtrl,
-                                keyboardType: TextInputType.emailAddress,
-                                decoration: const InputDecoration(
-                                  labelText: 'Email address',
-                                  prefixIcon: Icon(Icons.email_outlined),
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.isEmpty) return 'Enter your email';
-                                  if (!v.contains('@')) return 'Enter a valid email';
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Password
-                              TextFormField(
-                                controller: _passCtrl,
-                                obscureText: _obscure,
-                                onFieldSubmitted: (_) => _submit(context),
-                                decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  prefixIcon: const Icon(Icons.lock_outlined),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(_obscure
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined),
-                                    onPressed: () =>
-                                        setState(() => _obscure = !_obscure),
-                                  ),
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.length < 6) {
-                                    return 'Password must be at least 6 characters';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 8),
-
-                              // Forgot password
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: () {
-                                    final email = _emailCtrl.text.trim();
-                                    if (email.isEmpty) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(const SnackBar(
-                                              content: Text(
-                                                  'Enter your email first')));
-                                      return;
-                                    }
-                                    context.read<AuthBloc>().add(
-                                        AuthPasswordResetRequested(
-                                            email: email));
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Password reset email sent ✅')));
-                                  },
-                                  child: const Text('Forgot password?',
-                                      style: TextStyle(
-                                          color: AppColors.primary,
-                                          fontSize: 13)),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-
-                              // Sign In Button
-                              BlocBuilder<AuthBloc, AuthState>(
-                                builder: (ctx, state) {
-                                  return SizedBox(
-                                    width: double.infinity,
-                                    height: 52,
-                                    child: ElevatedButton(
-                                      onPressed: state is AuthLoading
-                                          ? null
-                                          : () => _submit(ctx),
-                                      child: state is AuthLoading
-                                          ? const SizedBox(
-                                              height: 20,
-                                              width: 20,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: Colors.white))
-                                          : const Text('Sign In'),
-                                    ),
-                                  );
-                                },
-                              ),
+                              _buildSignInForm(context),
+                              _buildSignUpForm(context),
                             ],
                           ),
                         ),
 
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 24),
                         const Divider(),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
                         const Center(
                           child: Text(
-                            'DPDP Act 2023 Compliant  •  AES-256 Encrypted\nOn-device AI  •  Offline First',
+                            'DPDP Act 2023 Compliant  •  AES-256 Encrypted',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 color: AppColors.textSecond, fontSize: 11),
@@ -270,6 +247,181 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Sign In Form ──────────────────────────────────────────────────────────
+
+  Widget _buildSignInForm(BuildContext context) {
+    return Form(
+      key: _signInFormKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextFormField(
+            controller: _signInEmailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Email address',
+              prefixIcon: Icon(Icons.email_outlined),
+            ),
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Enter your email';
+              if (!v.contains('@')) return 'Enter a valid email';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _signInPassCtrl,
+            obscureText: _signInObscure,
+            onFieldSubmitted: (_) => _submitSignIn(context),
+            decoration: InputDecoration(
+              labelText: 'Password',
+              prefixIcon: const Icon(Icons.lock_outlined),
+              suffixIcon: IconButton(
+                icon: Icon(_signInObscure
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined),
+                onPressed: () =>
+                    setState(() => _signInObscure = !_signInObscure),
+              ),
+            ),
+            validator: (v) {
+              if (v == null || v.length < 6) {
+                return 'Password must be at least 6 characters';
+              }
+              return null;
+            },
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () {
+                final email = _signInEmailCtrl.text.trim();
+                if (email.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Enter your email first')));
+                  return;
+                }
+                context
+                    .read<AuthBloc>()
+                    .add(AuthPasswordResetRequested(email: email));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Password reset email sent ✅')));
+              },
+              child: const Text('Forgot password?',
+                  style: TextStyle(color: AppColors.primary, fontSize: 13)),
+            ),
+          ),
+          BlocBuilder<AuthBloc, AuthState>(
+            builder: (ctx, state) {
+              return SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed:
+                      state is AuthLoading ? null : () => _submitSignIn(ctx),
+                  child: state is AuthLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Text('Sign In',
+                          style: TextStyle(fontSize: 16)),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Sign Up Form ──────────────────────────────────────────────────────────
+
+  Widget _buildSignUpForm(BuildContext context) {
+    return Form(
+      key: _signUpFormKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextFormField(
+            controller: _signUpEmailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Email address',
+              prefixIcon: Icon(Icons.email_outlined),
+            ),
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Enter your email';
+              if (!v.contains('@')) return 'Enter a valid email';
+              return null;
+            },
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _signUpPassCtrl,
+            obscureText: _signUpObscure,
+            decoration: InputDecoration(
+              labelText: 'Password (min 6 characters)',
+              prefixIcon: const Icon(Icons.lock_outlined),
+              suffixIcon: IconButton(
+                icon: Icon(_signUpObscure
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined),
+                onPressed: () =>
+                    setState(() => _signUpObscure = !_signUpObscure),
+              ),
+            ),
+            validator: (v) {
+              if (v == null || v.length < 6) return 'Minimum 6 characters';
+              return null;
+            },
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _signUpConfirmCtrl,
+            obscureText: _signUpConfirmObs,
+            onFieldSubmitted: (_) => _submitSignUp(context),
+            decoration: InputDecoration(
+              labelText: 'Confirm password',
+              prefixIcon: const Icon(Icons.lock_outlined),
+              suffixIcon: IconButton(
+                icon: Icon(_signUpConfirmObs
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined),
+                onPressed: () =>
+                    setState(() => _signUpConfirmObs = !_signUpConfirmObs),
+              ),
+            ),
+            validator: (v) {
+              if (v != _signUpPassCtrl.text) return 'Passwords do not match';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          BlocBuilder<AuthBloc, AuthState>(
+            builder: (ctx, state) {
+              return SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed:
+                      state is AuthLoading ? null : () => _submitSignUp(ctx),
+                  child: state is AuthLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Text('Create Account',
+                          style: TextStyle(fontSize: 16)),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

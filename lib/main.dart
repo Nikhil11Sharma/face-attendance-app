@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -14,10 +15,13 @@ import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Only lock orientation on mobile, not web
+  if (!kIsWeb) {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -50,6 +54,26 @@ class AppRoot extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, state) {
+        if (state is AuthInitial || state is AuthLoading) {
+          // Show splash while checking auth state
+          return const Scaffold(
+            backgroundColor: Color(0xFF0D47A1),
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.face_retouching_natural,
+                      size: 72, color: Colors.white),
+                  SizedBox(height: 16),
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 16),
+                  Text('Loading...',
+                      style: TextStyle(color: Colors.white, fontSize: 16)),
+                ],
+              ),
+            ),
+          );
+        }
         if (state is AuthAuthenticated) {
           return const DashboardScreen();
         }

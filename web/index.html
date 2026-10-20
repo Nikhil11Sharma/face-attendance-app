@@ -16,7 +16,7 @@
   <!-- Viewport -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-  <!-- Social / SEO -->
+  <!-- SEO -->
   <meta property="og:title" content="Face Attendance – Smart College Attendance">
   <meta property="og:description" content="Mark student attendance in seconds using AI face recognition.">
   <meta property="og:type" content="website">
@@ -25,6 +25,24 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <!-- Firebase JS SDK - required for Firebase Auth on web -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script>
+    // Initialize Firebase JS SDK (needed for auth on web)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDP-R70mDTQ5NHot7CxfYldtWVmAGtVm2o",
+      authDomain: "face-attendance-app26.firebaseapp.com",
+      projectId: "face-attendance-app26",
+      storageBucket: "face-attendance-app26.firebasestorage.app",
+      messagingSenderId: "46003342934",
+      appId: "1:46003342934:web:a5f9a4ca620373c4feb5f7"
+    };
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+  </script>
 
   <style>
     body {
